@@ -14,7 +14,7 @@ struct NestedCall {
 // One function definition, e.g. funA(3){funB,(true?funC:funD)} 5
 struct FunctionDef {
     string name;
-    string recursionExpr;         
+    string recursionExpr;
     NestedCall* nestedCalls;    //jo udday ich nestedcall si uda array
     int numNested;
     int requestedMemory;
@@ -75,6 +75,109 @@ public:
     }
 };
 
+class chstk {
+private:
+    char* data;
+    int capacity;
+    int count;
+
+    void resize() {
+        capacity *= 2;
+        char* newData = new char[capacity];
+        for (int i = 0; i < count; i++) newData[i] = data[i];
+        delete[] data;
+        data = newData;
+    }
+
+public:
+    chstk() {
+        capacity = 8;
+        count = 0;
+        data = new char[capacity];
+    }
+
+    void push(char f) {
+        if (count == capacity) resize();
+        data[count] = f;
+        count++;
+    }
+
+    void pop() {
+        if (count > 0) count--;
+        else cout << "underflow";
+    }
+
+    char& top() {
+        return data[count - 1];
+    }
+
+    bool isEmpty() {
+        return count == 0;
+    }
+
+    int size() {
+        return count;
+    }
+};
+
+int prec(char c)
+{
+    if (c == '/') return 5;
+    else if (c == '*') return 4;
+    else if (c == '+') return 3;
+    else if (c == '-') return 2;
+    return 0;
+}
+
+string infToPost(string ex)     //12+ 3/2*4
+{                     //expected: 12 3 2 / 4 * + 
+    string res;     //dry run: 12 3 2 / 4 * +
+    chstk Op;
+    int length = ex.length();
+    for (int i = 0; i < length; i++)
+    {
+
+        if (prec(ex[i]))
+        {
+            res += ' ';
+            while (!Op.isEmpty() && prec(Op.top()) >= prec(ex[i]))
+            {
+                res += ' ';
+                res += Op.top();
+                Op.pop();
+            }
+            Op.push(ex[i]);
+        }
+        else if (ex[i] == ')')
+        {
+            while (!Op.isEmpty() && Op.top() != '(')
+            {
+                res += Op.top();
+                Op.pop();
+            }
+            Op.pop();
+        }
+        else if (ex[i] == '(')
+        {
+            Op.push(ex[i]);
+        }
+        else
+        {
+            if (ex[i] != ' ')
+                res += ex[i];
+        }
+    }
+    while (!Op.isEmpty())
+    {
+        res += ' ';
+        res += Op.top();
+        Op.pop();
+    }
+
+
+    return res;
+}
+
 FunctionDef parseDefinitionLine(string line) {
     FunctionDef def;
 
@@ -85,9 +188,8 @@ FunctionDef parseDefinitionLine(string line) {
 
     // 2. recursion number inside ()'
     int start = i + 1;
-    while (line[i] != ')') i++;
-    def.recursionExpr = line.substr(start, i - start);  // could be empty string
-    i++; // skip ')'
+    while (line[i] != '{') i++;
+    def.recursionExpr = line.substr(start, i - start - 1);  // could be empty string
 
     // 3. nested calls inside { ... }
     i++; // skip '{'
@@ -132,20 +234,20 @@ FunctionDef parseDefinitionLine(string line) {
             ptr[c].plainName = "";
             c++;
             j++;
-            continue;   
+            continue;
         }
         else
         {
             ptr[c].isTernary = 0;
             int st = j;
-            while ( j < size && body[j] != ',' ) j++;
+            while (j < size && body[j] != ',') j++;
             string name = body.substr(st, j - st);
             ptr[c].plainName = name;
             c++;
             continue;
         }
 
-        
+
     }
     def.nestedCalls = ptr;
     def.numNested = funcs;
