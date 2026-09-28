@@ -120,6 +120,52 @@ public:
     }
 };
 
+
+class intstk {
+private:
+    int* data;
+    int capacity;
+    int count;
+
+    void resize() {
+        capacity *= 2;
+        int* newData = new int[capacity];
+        for (int i = 0; i < count; i++) newData[i] = data[i];
+        delete[] data;
+        data = newData;
+    }
+
+public:
+    intstk() {
+        capacity = 8;
+        count = 0;
+        data = new int[capacity];
+    }
+
+    void push(char f) {
+        if (count == capacity) resize();
+        data[count] = f;
+        count++;
+    }
+
+    void pop() {
+        if (count > 0) count--;
+        else cout << "underflow";
+    }
+
+    int& top() {
+        return data[count - 1];
+    }
+
+    bool isEmpty() {
+        return count == 0;
+    }
+
+    int size() {
+        return count;
+    }
+};
+
 int prec(char c)
 {
     if (c == '/') return 5;
@@ -142,8 +188,9 @@ string infToPost(string ex)     //12+ 3/2*4
             res += ' ';
             while (!Op.isEmpty() && prec(Op.top()) >= prec(ex[i]))
             {
-                res += ' ';
+
                 res += Op.top();
+                res += ' ';
                 Op.pop();
             }
             Op.push(ex[i]);
@@ -152,6 +199,7 @@ string infToPost(string ex)     //12+ 3/2*4
         {
             while (!Op.isEmpty() && Op.top() != '(')
             {
+                res += ' ';
                 res += Op.top();
                 Op.pop();
             }
@@ -176,6 +224,43 @@ string infToPost(string ex)     //12+ 3/2*4
 
 
     return res;
+}
+
+int postfixEvaluator(string s)
+{
+    intstk stk;
+    int size = s.length();
+    int num = 0;
+    bool in = false;
+
+    for (int i = 0; i < size; i++)
+    {
+        if (s[i] >= '0' && s[i] <= '9')
+        {
+            num = num * 10 + (s[i] - '0');
+            in = 1;
+        }
+        else
+        {
+            if (in)
+            {
+                stk.push(num);
+                num = 0;
+                in = false;
+            }
+            if (s[i] == ' ') continue;
+
+            int a = stk.top(); stk.pop();
+            int b = stk.top(); stk.pop();
+
+            if (s[i] == '*') stk.push(b * a);
+            else if (s[i] == '-') stk.push(b - a);
+            else if (s[i] == '+') stk.push(b + a);
+            else if (s[i] == '/') stk.push(b / a);
+        }
+    }
+    if (in) stk.push(num);
+    return stk.top();
 }
 
 FunctionDef parseDefinitionLine(string line) {
