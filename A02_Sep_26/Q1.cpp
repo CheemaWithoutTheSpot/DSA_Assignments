@@ -26,6 +26,32 @@ struct Frame {
     int allocatedSize;   // allocated mem != raw mem (round up to the smallest mult of 4 > raw mem)
 };
 
+struct DefCollection {
+    FunctionDef* data;
+    int capacity;
+    int count;
+};
+
+DefCollection makeCollection() {
+    DefCollection c;
+    c.capacity = 8;
+    c.count = 0;
+    c.data = new FunctionDef[c.capacity];
+    return c;
+}
+
+void addDef(DefCollection& c, FunctionDef def) {
+    if (c.count == c.capacity) {
+        c.capacity *= 2;
+        FunctionDef* newData = new FunctionDef[c.capacity];
+        for (int i = 0; i < c.count; i++) newData[i] = c.data[i];
+        delete[] c.data;
+        c.data = newData;
+    }
+    c.data[c.count] = def;
+    c.count++;
+}
+
 class CallStack {
 private:
     Frame* data;
@@ -142,7 +168,7 @@ public:
         data = new int[capacity];
     }
 
-    void push(char f) {
+    void push(int f) {
         if (count == capacity) resize();
         data[count] = f;
         count++;
@@ -341,4 +367,72 @@ FunctionDef parseDefinitionLine(string line) {
     def.requestedMemory = stoi(rest); // stoi skips leading spaces automatically
 
     return def;
+}
+
+
+FunctionDef* findDef(DefCollection& c, string name) {
+    for (int i = 0; i < c.count; i++) {
+        if (c.data[i].name == name) return &c.data[i];
+    }
+    return nullptr;
+}
+
+
+bool isAlpha(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+bool isAlnum(char c) {
+    return isAlpha(c) || (c >= '0' && c <= '9');
+}
+
+bool isValidName(string name) {
+    if (name.empty()) return false;
+    if (!isAlpha(name[0])) return false;
+    for (int i = 1; i < (int)name.length(); i++) {
+        if (!isAlnum(name[i])) return false;
+    }
+    return true;
+}
+bool hasDuplicate(DefCollection& c, string name) {
+    return findDef(c, name) != nullptr;
+}
+
+DefCollection readDefinitions(int N /*, however you're reading lines */)//fstream obj
+{
+    DefCollection defs = makeCollection();
+    for (int k = 0; k < N; k++) {
+        string line = "";/* read one line */
+        FunctionDef def = parseDefinitionLine(line);
+
+        if (!isValidName(def.name)) {
+            cout << "Error: Invalid function name " << def.name << endl;
+            continue;
+        }
+        if (hasDuplicate(defs, def.name)) {
+            cout << "Error: Duplicate definition of " << def.name << endl;
+            continue;
+        }
+        addDef(defs, def);
+    }
+    return defs;
+}
+
+void checkUndefined(DefCollection& defs) {
+    for (int i = 0; i < defs.count; i++) {
+        FunctionDef& def = defs.data[i];
+        for (int j = 0; j < def.numNested; j++) {
+            NestedCall& nc = def.nestedCalls[j];
+            if (nc.isTernary) {
+                if (findDef(defs, nc.ternaryTrue) == nullptr)
+                    cout << "Error: Undefined function " << nc.ternaryTrue << " called by " << def.name << endl;
+                if (findDef(defs, nc.ternaryFalse) == nullptr)
+                    cout << "Error: Undefined function " << nc.ternaryFalse << " called by " << def.name << endl;
+            }
+            else {
+                if (findDef(defs, nc.plainName) == nullptr)
+                    cout << "Error: Undefined function " << nc.plainName << " called by " << def.name << endl;
+            }
+        }
+    }
 }
