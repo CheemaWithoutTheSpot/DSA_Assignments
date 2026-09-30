@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include<fstream>
 using namespace std;
 
 // ey j si inu {funccall} ich istemaal kiya jaandeya
@@ -26,13 +27,13 @@ struct Frame {
     int allocatedSize;   // allocated mem != raw mem (round up to the smallest mult of 4 > raw mem)
 };
 
-struct DefCollection {
-    FunctionDef* data;
+struct DefCollection {  //where all the function definations live
+    FunctionDef* data;  //dynamic array
     int capacity;
     int count;
 };
 
-DefCollection makeCollection() {
+DefCollection makeCollection() {    //concstructor hi smjh lo (not really)
     DefCollection c;
     c.capacity = 8;
     c.count = 0;
@@ -40,7 +41,7 @@ DefCollection makeCollection() {
     return c;
 }
 
-void addDef(DefCollection& c, FunctionDef def) {
+void addDef(DefCollection& c, FunctionDef def) {    //same logic
     if (c.count == c.capacity) {
         c.capacity *= 2;
         FunctionDef* newData = new FunctionDef[c.capacity];
@@ -52,7 +53,7 @@ void addDef(DefCollection& c, FunctionDef def) {
     c.count++;
 }
 
-class CallStack {
+class CallStack {   //specifically used for enteries to be called
 private:
     Frame* data;
     int capacity;
@@ -101,7 +102,7 @@ public:
     }
 };
 
-class chstk {
+class chstk {   //for inf -> post
 private:
     char* data;
     int capacity;
@@ -147,7 +148,7 @@ public:
 };
 
 
-class intstk {
+class intstk {  //for post -> pre
 private:
     int* data;
     int capacity;
@@ -370,7 +371,7 @@ FunctionDef parseDefinitionLine(string line) {
 }
 
 
-FunctionDef* findDef(DefCollection& c, string name) {
+FunctionDef* findDef(DefCollection& c, string name) {   //finding a function, (used in nested calls)
     for (int i = 0; i < c.count; i++) {
         if (c.data[i].name == name) return &c.data[i];
     }
@@ -378,31 +379,36 @@ FunctionDef* findDef(DefCollection& c, string name) {
 }
 
 
-bool isAlpha(char c) {
+bool isAlpha(char c) {  //is alphabet helper function
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
 }
 
-bool isAlnum(char c) {
-    return isAlpha(c) || (c >= '0' && c <= '9');
+bool isAlnum(char c) {  //is alphanumerical helper function
+    return isAlpha(c) || (c >= '0' && c <= '9');    // alpha + number = holy recursion 💀
 }
 
-bool isValidName(string name) {
+bool isValidName(string name)
+{
     if (name.empty()) return false;
     if (!isAlpha(name[0])) return false;
+
     for (int i = 1; i < (int)name.length(); i++) {
         if (!isAlnum(name[i])) return false;
     }
     return true;
 }
-bool hasDuplicate(DefCollection& c, string name) {
+
+bool hasDuplicate(DefCollection& c, string name)
+{
     return findDef(c, name) != nullptr;
 }
 
-DefCollection readDefinitions(int N /*, however you're reading lines */)//fstream obj
+DefCollection readDefinitions(int N, int M, ifstream  fin)
 {
     DefCollection defs = makeCollection();
     for (int k = 0; k < N; k++) {
-        string line = "";/* read one line */
+        string line;
+        getline(fin, line);
         FunctionDef def = parseDefinitionLine(line);
 
         if (!isValidName(def.name)) {
@@ -415,6 +421,7 @@ DefCollection readDefinitions(int N /*, however you're reading lines */)//fstrea
         }
         addDef(defs, def);
     }
+
     return defs;
 }
 
@@ -435,4 +442,45 @@ void checkUndefined(DefCollection& defs) {
             }
         }
     }
+}
+
+int main()
+{
+    int N, M, S;
+    ifstream fin("input.txt");
+    int testCaseNum = 1;
+    while (fin >> N >> M >> S) {
+        fin.ignore();
+
+
+        cout << "========== Test Case " << testCaseNum << " ==========" << endl;
+
+        DefCollection defs = makeCollection();
+        for (int k = 0; k < N; k++) {
+            string line;
+            getline(fin, line);
+            // skip blank lines if any slip in
+            if (line.empty()) { k--; continue; }
+            FunctionDef def = parseDefinitionLine(line);
+        }
+
+        string* topLevelCalls = new string[M];
+        for (int k = 0; k < M; k++) {
+            getline(fin, topLevelCalls[k]);
+        }
+
+        // ... run checkUndefined, cycle detection, execution, etc. on defs/topLevelCalls here ...
+
+        // now consume the "###" line (or hit EOF if this was the last test case)
+        string sep;
+        getline(fin, sep);
+        if (sep != "###") return 0;
+        // if sep isn't "###", you're either at EOF or something's misformatted
+
+        testCaseNum++;
+        delete[] topLevelCalls;
+        // also free defs.data and every def's nestedCalls array once you're done with this test case,
+        // since "state must not leak" includes memory, not just logical values
+    }
+
 }
