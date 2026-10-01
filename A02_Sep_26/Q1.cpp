@@ -195,10 +195,8 @@ public:
 
 int prec(char c)
 {
-    if (c == '/') return 5;
-    else if (c == '*') return 4;
-    else if (c == '+') return 3;
-    else if (c == '-') return 2;
+    if (c == '*' || c == '/') return 2;
+    if (c == '+' || c == '-') return 1;
     return 0;
 }
 
