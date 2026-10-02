@@ -417,7 +417,7 @@ bool hasDuplicate(DefCollection& c, string name)
     return findDef(c, name) != nullptr;
 }
 
-DefCollection readDefinitions(int N, int M, ifstream  fin)
+DefCollection readDefinitions(int N, int M, ifstream  fin)  //from the function defination line, it extracts the def info
 {
     DefCollection defs = makeCollection();
     for (int k = 0; k < N; k++) {
@@ -441,12 +441,15 @@ DefCollection readDefinitions(int N, int M, ifstream  fin)
 
 bool checkUndefined(DefCollection& defs) {
     bool found = false;
-    for (int i = 0; i < defs.count; i++) {
+    for (int i = 0; i < defs.count; i++) 
+    {
         FunctionDef& def = defs.data[i];
-        for (int j = 0; j < def.numNested; j++) {
+    
+        for (int j = 0; j < def.numNested; j++) 
+        {
             NestedCall& nc = def.nestedCalls[j];
             if (nc.isTernary) {
-                if (findDef(defs, nc.ternaryTrue) == nullptr) {
+                if (findDef(defs, nc.ternaryTrue) == nullptr) { //if the nigga cant find it then it undef
                     cout << "Error: Undefined function " << nc.ternaryTrue << " called by " << def.name << endl;
                     found = true;
                 }
@@ -466,7 +469,8 @@ bool checkUndefined(DefCollection& defs) {
 
 
 bool dfsCycle(DefCollection& defs, int idx, int* path, int& pathLen,
-    bool* inPath, bool* visited, int* cycleOut, int& cycleLen) {
+    bool* inPath, bool* visited, int* cycleOut, int& cycleLen) 
+{
     path[pathLen] = idx;
     pathLen++;
     inPath[idx] = true;
@@ -545,12 +549,12 @@ void printCycle(DefCollection& defs, int* cycleOut, int cycleLen) {
 
 
 int align4(int bytes) {
-    return ((bytes + 3) / 4) * 4;
+    return ((bytes + 3) / 4) * 4;   //aligning to 4 bytes, for memory allocation
 }
 
 
 
-struct Stats {
+struct Stats {  //jus made a class for ease of use 
     int totalAttempts = 0;
     int successfulCalls = 0;
     int skippedOverflow = 0;
@@ -574,8 +578,7 @@ void printStackStatus(CallStack& stack, int used, int S) {
     cout << "Memory: " << used << "/" << S << " B" << endl;
 }
 
-// ===================== NEW: Execution engine =====================
-// Forward declarations (executeFunction and executeInvocation call each other)
+
 void executeFunction(DefCollection& defs, string name, CallStack& stack,
     int& used, int S, Stats& stats, int* callCounts);
 
@@ -633,10 +636,10 @@ void executeInvocation(DefCollection& defs, FunctionDef& def, int totalCount, in
 void executeFunction(DefCollection& defs, string name, CallStack& stack,
     int& used, int S, Stats& stats, int* callCounts) {
     FunctionDef* def = findDef(defs, name);
-    if (def == nullptr) return; // should already be caught by static validation
+    if (def == nullptr) return; 
 
     int recursionCount = evalRecursionCount(def->recursionExpr);
-    if (recursionCount < 1) recursionCount = 1; // defensive; spec assumes valid positive counts
+    if (recursionCount < 1) recursionCount = 1; 
 
     executeInvocation(defs, *def, recursionCount, 1, stack, used, S, stats, callCounts);
 }
@@ -656,7 +659,7 @@ void printSummary(DefCollection& defs, Stats& stats, int S, int* callCounts) {
         if (bestIdx == -1 || callCounts[i] > callCounts[bestIdx]) {
             bestIdx = i;
         }
-        // strictly '>' preserves first-definition-order on ties, since we never overwrite on equal counts
+       
     }
     if (bestIdx != -1) {
         cout << "Most frequently called function: " << defs.data[bestIdx].name << endl;
@@ -723,8 +726,8 @@ int main() {
 
 
         // undefined-reference checks (nested calls + top-level calls)
-        int beforeCount = staticErrorFound ? 1 : 0; // just a flag holder, see note below
-        if (checkUndefined(defs)) staticErrorFound = true; // NOTE: currently prints but doesn't set staticErrorFound — see note after code
+        int beforeCount = staticErrorFound ? 1 : 0; 
+        if (checkUndefined(defs)) staticErrorFound = true; 
         for (int k = 0; k < M; k++) {
             if (findDef(defs, topLevelCalls[k]) == nullptr) {
                 cout << "Error: Undefined top-level function " << topLevelCalls[k] << endl;
