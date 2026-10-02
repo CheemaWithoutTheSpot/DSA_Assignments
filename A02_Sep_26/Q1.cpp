@@ -288,23 +288,34 @@ int postfixEvaluator(string s)
     return stk.top();
 }
 
+
+int evalRecursionCount(string expr)
+{
+    if (expr.empty()) return 1;
+    return postfixEvaluator(infToPost(expr));
+}
+
 FunctionDef parseDefinitionLine(string line) {
     FunctionDef def;
+    int len = line.length();
 
     // 1. ida naam before '('
     int i = 0;
-    while (line[i] != '(') i++;
+    while (i < len && line[i] != '(') i++;
+    if (i >= len) { cout << "Malformed definition line: [" << line << "]" << endl; def.name = ""; def.numNested = 0; def.nestedCalls = nullptr; def.requestedMemory = 0; return def; }
     def.name = line.substr(0, i);
 
     // 2. recursion number inside ()'
     int start = i + 1;
     while (line[i] != '{') i++;
+    if (i < len && i >= len) { cout << "Malformed definition line: [" << line << "]" << endl; def.name = ""; def.numNested = 0; def.nestedCalls = nullptr; def.requestedMemory = 0; return def; }
     def.recursionExpr = line.substr(start, i - start - 1);  // could be empty string
 
     // 3. nested calls inside { ... }
     i++; // skip '{'
     start = i;
-    while (line[i] != '}') i++;
+    while (i < len && line[i] != '}') i++;
+    if (i >= len) { cout << "Malformed definition line: [" << line << "]" << endl; def.name = ""; def.numNested = 0; def.nestedCalls = nullptr; def.requestedMemory = 0; return def; }
     string body = line.substr(start, i - start); // e.g. "funB,(true?funC:funD)"
     i++; // skip '}'
 
@@ -375,7 +386,12 @@ FunctionDef* findDef(DefCollection& c, string name) {   //finding a function, (u
     }
     return nullptr;
 }
-
+int findDefIndex(DefCollection& c, string name) {
+    for (int i = 0; i < c.count; i++) {
+        if (c.data[i].name == name) return i;
+    }
+    return -1;
+}
 
 bool isAlpha(char c) {  //is alphabet helper function
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
@@ -423,62 +439,337 @@ DefCollection readDefinitions(int N, int M, ifstream  fin)
     return defs;
 }
 
-void checkUndefined(DefCollection& defs) {
+bool checkUndefined(DefCollection& defs) {
+    bool found = false;
     for (int i = 0; i < defs.count; i++) {
         FunctionDef& def = defs.data[i];
         for (int j = 0; j < def.numNested; j++) {
             NestedCall& nc = def.nestedCalls[j];
             if (nc.isTernary) {
-                if (findDef(defs, nc.ternaryTrue) == nullptr)
+                if (findDef(defs, nc.ternaryTrue) == nullptr) {
                     cout << "Error: Undefined function " << nc.ternaryTrue << " called by " << def.name << endl;
-                if (findDef(defs, nc.ternaryFalse) == nullptr)
+                    found = true;
+                }
+                if (findDef(defs, nc.ternaryFalse) == nullptr) {
                     cout << "Error: Undefined function " << nc.ternaryFalse << " called by " << def.name << endl;
+                    found = true;
+                }
             }
-            else {
-                if (findDef(defs, nc.plainName) == nullptr)
-                    cout << "Error: Undefined function " << nc.plainName << " called by " << def.name << endl;
+            else if (findDef(defs, nc.plainName) == nullptr) {
+                cout << "Error: Undefined function " << nc.plainName << " called by " << def.name << endl;
+                found = true;
             }
         }
     }
+    return found;
 }
 
-int main()
-{
+
+bool dfsCycle(DefCollection& defs, int idx, int* path, int& pathLen,
+    bool* inPath, bool* visited, int* cycleOut, int& cycleLen) {
+    path[pathLen] = idx;
+    pathLen++;
+    inPath[idx] = true;
+
+    FunctionDef& def = defs.data[idx];
+    for (int j = 0; j < def.numNested; j++) {
+        NestedCall& nc = def.nestedCalls[j];
+
+        string neighborNames[2];
+        int neighborCount;
+        if (nc.isTernary) {
+            neighborNames[0] = nc.ternaryTrue;
+            neighborNames[1] = nc.ternaryFalse;
+            neighborCount = 2;
+        }
+        else {
+            neighborNames[0] = nc.plainName;
+            neighborCount = 1;
+        }
+
+        for (int n = 0; n < neighborCount; n++) {
+            int nbIdx = findDefIndex(defs, neighborNames[n]);
+            if (nbIdx == -1) continue; // undefined; checkUndefined reports it separately
+
+            if (inPath[nbIdx]) {
+                int startPos = -1;
+                for (int p = 0; p < pathLen; p++) {
+                    if (path[p] == nbIdx) { startPos = p; break; }
+                }
+                cycleLen = 0;
+                for (int p = startPos; p < pathLen; p++) cycleOut[cycleLen++] = path[p];
+                cycleOut[cycleLen++] = nbIdx;
+                return true;
+            }
+            if (!visited[nbIdx]) {
+                if (dfsCycle(defs, nbIdx, path, pathLen, inPath, visited, cycleOut, cycleLen))
+                    return true;
+            }
+        }
+    }
+
+    pathLen--;
+    inPath[idx] = false;
+    visited[idx] = true;
+    return false;
+}
+
+bool findCycle(DefCollection& defs, int* cycleOut, int& cycleLen) {
+    bool* visited = new bool[defs.count]();
+    bool* inPath = new bool[defs.count]();
+    int* path = new int[defs.count];
+    int pathLen = 0;
+    bool found = false;
+
+    for (int i = 0; i < defs.count && !found; i++) {
+        if (!visited[i]) {
+            if (dfsCycle(defs, i, path, pathLen, inPath, visited, cycleOut, cycleLen))
+                found = true;
+        }
+    }
+
+    delete[] visited;
+    delete[] inPath;
+    delete[] path;
+    return found;
+}
+
+void printCycle(DefCollection& defs, int* cycleOut, int cycleLen) {
+    cout << "Error: Circular Dependency: ";
+    for (int i = 0; i < cycleLen; i++) {
+        cout << defs.data[cycleOut[i]].name;
+        if (i != cycleLen - 1) cout << " -> ";
+    }
+    cout << endl;
+}
+
+
+int align4(int bytes) {
+    return ((bytes + 3) / 4) * 4;
+}
+
+
+
+struct Stats {
+    int totalAttempts = 0;
+    int successfulCalls = 0;
+    int skippedOverflow = 0;
+    int maxDepthReached = 0;
+    int maxMemUsed = 0;
+};
+
+void printStackStatus(CallStack& stack, int used, int S) {
+    cout << "Stack: ";
+    if (stack.isEmpty()) {
+        cout << "EMPTY";
+    }
+    else {
+        for (int i = 0; i < stack.size(); i++) {
+            cout << "[" << stack.at(i).funcName << ":" << stack.at(i).allocatedSize << "]";
+            if (i != stack.size() - 1) cout << " -> ";
+        }
+        cout << " <- TOP";
+    }
+    cout << endl;
+    cout << "Memory: " << used << "/" << S << " B" << endl;
+}
+
+// ===================== NEW: Execution engine =====================
+// Forward declarations (executeFunction and executeInvocation call each other)
+void executeFunction(DefCollection& defs, string name, CallStack& stack,
+    int& used, int S, Stats& stats, int* callCounts);
+
+void executeInvocation(DefCollection& defs, FunctionDef& def, int totalCount, int depth,
+    CallStack& stack, int& used, int S, Stats& stats, int* callCounts) {
+    stats.totalAttempts++;
+    int aligned = align4(def.requestedMemory);
+
+    if (used + aligned > S) {
+        cout << "Error: Stack overflow while calling " << def.name << endl;
+        stats.skippedOverflow++;
+        return; // this invocation never pushes, never recurses further, never runs its body
+    }
+
+    used += aligned;
+    Frame f;
+    f.funcName = def.name;
+    f.allocatedSize = aligned;
+    stack.push(f);
+
+    stats.successfulCalls++;
+    int idx = findDefIndex(defs, def.name);
+    if (idx != -1) callCounts[idx]++;
+
+    if (stack.size() > stats.maxDepthReached) stats.maxDepthReached = stack.size();
+    if (used > stats.maxMemUsed) stats.maxMemUsed = used;
+
+    cout << def.name << " called" << endl;
+    printStackStatus(stack, used, S);
+
+    // recursion happens before this invocation's own body
+    if (depth < totalCount) {
+        executeInvocation(defs, def, totalCount, depth + 1, stack, used, S, stats, callCounts);
+    }
+
+    // this invocation's own nested-call body, left to right
+    for (int j = 0; j < def.numNested; j++) {
+        NestedCall& nc = def.nestedCalls[j];
+        string selected;
+        if (nc.isTernary) {
+            selected = nc.condition ? nc.ternaryTrue : nc.ternaryFalse;
+        }
+        else {
+            selected = nc.plainName;
+        }
+        executeFunction(defs, selected, stack, used, S, stats, callCounts);
+    }
+
+    stack.pop();
+    used -= aligned;
+    cout << def.name << " finished" << endl;
+    printStackStatus(stack, used, S);
+}
+
+void executeFunction(DefCollection& defs, string name, CallStack& stack,
+    int& used, int S, Stats& stats, int* callCounts) {
+    FunctionDef* def = findDef(defs, name);
+    if (def == nullptr) return; // should already be caught by static validation
+
+    int recursionCount = evalRecursionCount(def->recursionExpr);
+    if (recursionCount < 1) recursionCount = 1; // defensive; spec assumes valid positive counts
+
+    executeInvocation(defs, *def, recursionCount, 1, stack, used, S, stats, callCounts);
+}
+
+void printSummary(DefCollection& defs, Stats& stats, int S, int* callCounts) {
+    cout << "Execution Summary" << endl;
+    cout << "-----------------" << endl;
+    cout << "Total call attempts: " << stats.totalAttempts << endl;
+    cout << "Successful calls: " << stats.successfulCalls << endl;
+    cout << "Skipped due to stack overflow: " << stats.skippedOverflow << endl;
+    cout << "Maximum stack depth reached: " << stats.maxDepthReached << endl;
+    cout << "Maximum stack memory used: " << stats.maxMemUsed << " B" << endl;
+    cout << "Total stack capacity: " << S << " B" << endl;
+
+    int bestIdx = -1;
+    for (int i = 0; i < defs.count; i++) {
+        if (bestIdx == -1 || callCounts[i] > callCounts[bestIdx]) {
+            bestIdx = i;
+        }
+        // strictly '>' preserves first-definition-order on ties, since we never overwrite on equal counts
+    }
+    if (bestIdx != -1) {
+        cout << "Most frequently called function: " << defs.data[bestIdx].name << endl;
+    }
+}
+
+bool isSpaceChar(char c) {
+    return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+}
+
+string trim(string s) {
+    int start = 0;
+    while (start < (int)s.length() && isSpaceChar(s[start])) start++;
+    int end = (int)s.length();
+    while (end > start && isSpaceChar(s[end - 1])) end--;
+    return s.substr(start, end - start);
+}
+int main() {
     int N, M, S;
     ifstream fin("input.txt");
     int testCaseNum = 1;
+
     while (fin >> N >> M >> S) {
         fin.ignore();
-
-
         cout << "========== Test Case " << testCaseNum << " ==========" << endl;
 
         DefCollection defs = makeCollection();
+        bool staticErrorFound = false;
+
         for (int k = 0; k < N; k++) {
             string line;
             getline(fin, line);
-            // skip blank lines if any slip in
+            line = trim(line);
             if (line.empty()) { k--; continue; }
+
+
             FunctionDef def = parseDefinitionLine(line);
+
+            if (!isValidName(def.name)) {
+                cout << "Error: Invalid function name " << def.name << endl;
+                staticErrorFound = true;
+                continue;
+            }
+            if (hasDuplicate(defs, def.name)) {
+                cout << "Error: Duplicate definition of " << def.name << endl;
+                staticErrorFound = true;
+                continue;
+            }
+            addDef(defs, def);
         }
 
         string* topLevelCalls = new string[M];
         for (int k = 0; k < M; k++) {
-            getline(fin, topLevelCalls[k]);
+            string line;
+            while (getline(fin, line)) {
+                line = trim(line);
+                if (!line.empty()) break;
+            }
+            topLevelCalls[k] = line;
+
         }
 
-        // ... run checkUndefined, cycle detection, execution, etc. on defs/topLevelCalls here ...
 
-        // now consume the "###" line (or hit EOF if this was the last test case)
+
+
+        // undefined-reference checks (nested calls + top-level calls)
+        int beforeCount = staticErrorFound ? 1 : 0; // just a flag holder, see note below
+        if (checkUndefined(defs)) staticErrorFound = true; // NOTE: currently prints but doesn't set staticErrorFound — see note after code
+        for (int k = 0; k < M; k++) {
+            if (findDef(defs, topLevelCalls[k]) == nullptr) {
+                cout << "Error: Undefined top-level function " << topLevelCalls[k] << endl;
+                staticErrorFound = true;
+            }
+        }
+
+        // cycle detection
+        int* cycleArr = new int[defs.count + 1];
+        int cycleLen = 0;
+        if (findCycle(defs, cycleArr, cycleLen)) {
+            printCycle(defs, cycleArr, cycleLen);
+            staticErrorFound = true;
+        }
+        delete[] cycleArr;
+
+        if (!staticErrorFound) {
+            CallStack stack;
+            int used = 0;
+            Stats stats;
+            int* callCounts = new int[defs.count]();
+
+            for (int k = 0; k < M; k++) {
+                executeFunction(defs, topLevelCalls[k], stack, used, S, stats, callCounts);
+            }
+
+            cout << endl;
+            printSummary(defs, stats, S, callCounts);
+            delete[] callCounts;
+        }
+
         string sep;
-        getline(fin, sep);
-        if (sep != "###") return 0;
-        // if sep isn't "###", you're either at EOF or something's misformatted
+        while (getline(fin, sep)) {
+            sep = trim(sep);
+            if (!sep.empty()) break;
+        }// consume "###" if present; no error if this is the last test case
 
         testCaseNum++;
         delete[] topLevelCalls;
-        // also free defs.data and every def's nestedCalls array once you're done with this test case,
-        // since "state must not leak" includes memory, not just logical values
+
+        for (int i = 0; i < defs.count; i++) delete[] defs.data[i].nestedCalls;
+        delete[] defs.data;
+
+        cout << endl;
     }
 
+    return 0;
 }
